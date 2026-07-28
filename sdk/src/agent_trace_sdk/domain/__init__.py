@@ -1,0 +1,1 @@
+# Domain interfaces for AgentTracer SDK
