@@ -1,18 +1,11 @@
-"""AgentTracer SDK — trace your AI agents."""
-from .tracer import Tracer
-from .span import Span
-from .exporter import HTTPExporter, ConsoleExporter
-from .decorators import trace_agent_run
-from .domain.interfaces import IEventExporter, ExportEvent, ExportBatch, ExportError
+"""AgentTracer SDK — OpenTelemetry-based tracing for AI agents."""
+from .exporter import AgentTraceSpanExporter
+from .setup import init_tracing, trace_agent_run, get_tracer, shutdown_tracing
 
 __all__ = [
-    "Tracer",
-    "Span",
-    "HTTPExporter",
-    "ConsoleExporter",
+    "AgentTraceSpanExporter",
+    "init_tracing",
     "trace_agent_run",
-    "IEventExporter",
-    "ExportEvent",
-    "ExportBatch",
-    "ExportError",
+    "get_tracer",
+    "shutdown_tracing",
 ]

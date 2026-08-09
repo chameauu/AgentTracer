@@ -1,10 +1,18 @@
 [project]
 name = "agent-tracer-sdk"
 version = "0.1.0"
-description = "SDK for AI Agent Step Debugger"
+description = "OpenTelemetry-based SDK for AgentTracer"
 requires-python = ">=3.10"
 dependencies = [
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
     "httpx>=0.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [build-system]

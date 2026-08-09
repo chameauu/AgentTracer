@@ -1,77 +1,157 @@
-"""Event exporters for the SDK."""
+"""OpenTelemetry SpanExporter that sends traces to AgentTracer backend."""
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import Any, Sequence
 
-from .domain.interfaces import IEventExporter, ExportBatch, ExportError
+import httpx
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 
-class HTTPExporter(IEventExporter):
-    """Exports events to the AgentTracer backend via HTTP."""
+class AgentTraceSpanExporter(SpanExporter):
+    """Exports OTel spans to the AgentTracer backend.
+
+    Converts OpenTelemetry spans into the format expected by
+    POST /api/v1/ingest/events and sends them in batches.
+    """
 
     def __init__(
         self,
         endpoint: str = "http://localhost:8000/api/v1/ingest/events",
         timeout: float = 5.0,
-        headers: dict[str, str] | None = None,
     ) -> None:
         self._endpoint = endpoint
+        self._client: httpx.AsyncClient | None = None
         self._timeout = timeout
-        self._headers = headers or {}
-        self._client: Any = None
 
-    async def _get_client(self) -> Any:
+    async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            try:
-                import httpx
-                self._client = httpx.AsyncClient(timeout=self._timeout)
-            except ImportError:
-                raise ImportError("httpx is required for HTTPExporter. Install with: pip install httpx")
+            self._client = httpx.AsyncClient(timeout=self._timeout)
         return self._client
 
-    async def export(self, batch: ExportBatch) -> bool:
-        client = await self._get_client()
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        """Export a batch of OTel spans to the backend."""
+        import asyncio
+
         try:
-            response = await client.post(
-                self._endpoint,
-                json=batch.to_dict(),
-                headers={"Content-Type": "application/json", **self._headers},
-            )
-            response.raise_for_status()
-            return True
+            # Check if we're already in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context - we can't use asyncio.run()
+                # Instead, create a new thread to run the async code
+                import threading
+                
+                def run_in_thread():
+                    asyncio.run(self._export_async(spans))
+                
+                thread = threading.Thread(target=run_in_thread)
+                thread.start()
+                thread.join(timeout=30)  # Wait max 30 seconds
+                return SpanExportResult.SUCCESS
+            except RuntimeError:
+                # No running event loop - use asyncio.run()
+                asyncio.run(self._export_async(spans))
+                return SpanExportResult.SUCCESS
         except Exception as e:
-            error_msg = str(e)
-            if hasattr(e, 'response') and e.response is not None:
-                error_msg = f"HTTP error: {e.response.status_code}"
-            raise ExportError(f"Export failed: {error_msg}") from e
+            print(f"AgentTrace export failed: {e}")
+            return SpanExportResult.FAILURE
 
-    async def flush(self) -> None:
-        pass
+    async def _export_async(self, spans: Sequence[ReadableSpan]) -> None:
+        if not spans:
+            return
 
-    async def close(self) -> None:
+        client = await self._get_client()
+        events: list[dict[str, Any]] = []
+        run_id: str | None = None
+
+        for span in spans:
+            # Handle both int and string span_id
+            if span.context and span.context.span_id:
+                span_id = format(span.context.span_id, "x") if isinstance(span.context.span_id, int) else str(span.context.span_id)
+            else:
+                span_id = "unknown"
+            if run_id is None:
+                run_id = span_id
+
+            # Convert OTel span attributes
+            attrs = dict(span.attributes) if span.attributes else {}
+            span_name = span.name
+            span_type = attrs.pop("span_type", "step")
+
+            # span_start event
+            start_time_ns = span.start_time
+            start_time_iso = _ns_to_iso(start_time_ns) if start_time_ns else ""
+
+            parent_id = None
+            if span.parent and span.parent.span_id:
+                parent_id = format(span.parent.span_id, "x") if isinstance(span.parent.span_id, int) else str(span.parent.span_id)
+
+            events.append({
+                "type": "span_start",
+                "data": {
+                    "span_id": span_id,
+                    "parent_id": parent_id,
+                    "name": span_name,
+                    "span_type": span_type,
+                    "timestamp": start_time_iso,
+                    "attributes": attrs,
+                },
+            })
+
+            # span_end event
+            end_time_ns = span.end_time
+            if end_time_ns:
+                end_time_iso = _ns_to_iso(end_time_ns)
+                events.append({
+                    "type": "span_end",
+                    "data": {
+                        "span_id": span_id,
+                        "timestamp": end_time_iso,
+                        "attributes": {},
+                    },
+                })
+
+            # Convert OTel events to span_event format
+            for otel_event in span.events:
+                event_time_iso = _ns_to_iso(otel_event.timestamp) if otel_event.timestamp else ""
+                events.append({
+                    "type": "span_event",
+                    "data": {
+                        "span_id": span_id,
+                        "event_type": otel_event.name,
+                        "timestamp": event_time_iso,
+                        "payload": dict(otel_event.attributes) if otel_event.attributes else {},
+                    },
+                })
+
+        if not events:
+            return
+
+        payload = {
+            "run_id": run_id or "unknown",
+            "events": events,
+        }
+
+        response = await client.post(self._endpoint, json=payload)
+        response.raise_for_status()
+
+    def shutdown(self) -> None:
+        """Clean up the exporter."""
+        import asyncio
         if self._client:
-            await self._client.aclose()
+            try:
+                asyncio.run(self._client.aclose())
+            except Exception:
+                pass
             self._client = None
 
-
-class ConsoleExporter(IEventExporter):
-    """Exports events to stdout for debugging."""
-
-    def __init__(self, output_format: str = "json") -> None:
-        self._output_format = output_format
-
-    async def export(self, batch: ExportBatch) -> bool:
-        if self._output_format == "json":
-            print(json.dumps(batch.to_dict(), indent=2))
-        else:
-            print(f"Run ID: {batch.run_id}")
-            for event in batch.events:
-                print(f"  {event.event_type}: {event.span_id} - {event.timestamp}")
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Force flush is a no-op since we send immediately."""
         return True
 
-    async def flush(self) -> None:
-        pass
 
-    async def close(self) -> None:
-        pass
+def _ns_to_iso(ns: int) -> str:
+    """Convert nanoseconds since epoch to ISO 8601 string."""
+    from datetime import datetime, timezone
+    sec = ns / 1_000_000_000
+    return datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
