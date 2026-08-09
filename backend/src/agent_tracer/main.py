@@ -1,6 +1,5 @@
-"""Minimal AgentTracer Backend
+"""Minimal AgentTracer Backend"""
 
-"""
 from __future__ import annotations
 
 import json
@@ -163,12 +162,21 @@ async def ingest_events(request: IngestRequest) -> IngestResponse:
 
     try:
         # Ensure run exists
-        run = conn.execute("SELECT id FROM runs WHERE id = ?", (request.run_id,)).fetchone()
+        run = conn.execute(
+            "SELECT id FROM runs WHERE id = ?", (request.run_id,)
+        ).fetchone()
         if not run:
             now = _utcnow()
             conn.execute(
                 "INSERT INTO runs (id, name, status, started_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (request.run_id, request.run_name or f"run-{request.run_id[:8]}", "running", now, now, now),
+                (
+                    request.run_id,
+                    request.run_name or f"run-{request.run_id[:8]}",
+                    "running",
+                    now,
+                    now,
+                    now,
+                ),
             )
 
         for event in request.events:
@@ -233,7 +241,9 @@ async def list_runs(limit: int = 20, offset: int = 0, status: str | None = None)
                 "SELECT * FROM runs WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (status, limit, offset),
             ).fetchall()
-            total = conn.execute("SELECT COUNT(*) FROM runs WHERE status = ?", (status,)).fetchone()[0]
+            total = conn.execute(
+                "SELECT COUNT(*) FROM runs WHERE status = ?", (status,)
+            ).fetchone()[0]
         else:
             rows = conn.execute(
                 "SELECT * FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -246,18 +256,25 @@ async def list_runs(limit: int = 20, offset: int = 0, status: str | None = None)
             node_count = conn.execute(
                 "SELECT COUNT(*) FROM trace_nodes WHERE run_id = ?", (row["id"],)
             ).fetchone()[0]
-            runs.append(RunResponse(
-                id=row["id"],
-                name=row["name"],
-                status=row["status"],
-                started_at=row["started_at"],
-                ended_at=row["ended_at"],
-                duration_ms=_calc_duration_ms(row["started_at"], row["ended_at"]),
-                metadata=json.loads(row["metadata_json"] or "{}"),
-                node_count=node_count,
-            ))
+            runs.append(
+                RunResponse(
+                    id=row["id"],
+                    name=row["name"],
+                    status=row["status"],
+                    started_at=row["started_at"],
+                    ended_at=row["ended_at"],
+                    duration_ms=_calc_duration_ms(row["started_at"], row["ended_at"]),
+                    metadata=json.loads(row["metadata_json"] or "{}"),
+                    node_count=node_count,
+                )
+            )
 
-        return {"runs": [r.model_dump() for r in runs], "total": total, "limit": limit, "offset": offset}
+        return {
+            "runs": [r.model_dump() for r in runs],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
     finally:
         conn.close()
 
@@ -336,27 +353,31 @@ async def get_run_tree(run_id: str):
                 nid = er["node_id"]
                 if nid not in events_map:
                     events_map[nid] = []
-                events_map[nid].append({
-                    "id": er["id"],
-                    "event_type": er["event_type"],
-                    "timestamp": er["timestamp"],
-                    "payload": json.loads(er["payload_json"] or "{}"),
-                })
+                events_map[nid].append(
+                    {
+                        "id": er["id"],
+                        "event_type": er["event_type"],
+                        "timestamp": er["timestamp"],
+                        "payload": json.loads(er["payload_json"] or "{}"),
+                    }
+                )
 
         # Convert to dicts
         nodes = []
         for r in node_rows:
-            nodes.append({
-                "id": r["id"],
-                "run_id": r["run_id"],
-                "parent_id": r["parent_id"],
-                "name": r["name"],
-                "span_type": r["span_type"],
-                "started_at": r["started_at"],
-                "ended_at": r["ended_at"],
-                "duration_ms": _calc_duration_ms(r["started_at"], r["ended_at"]),
-                "attributes": json.loads(r["attributes_json"] or "{}"),
-            })
+            nodes.append(
+                {
+                    "id": r["id"],
+                    "run_id": r["run_id"],
+                    "parent_id": r["parent_id"],
+                    "name": r["name"],
+                    "span_type": r["span_type"],
+                    "started_at": r["started_at"],
+                    "ended_at": r["ended_at"],
+                    "duration_ms": _calc_duration_ms(r["started_at"], r["ended_at"]),
+                    "attributes": json.loads(r["attributes_json"] or "{}"),
+                }
+            )
 
         roots = _build_tree(nodes, events_map)
 
