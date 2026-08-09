@@ -13,11 +13,13 @@ dist/
 # IDE
 .vscode/
 .idea/
+.kilo/
 
 # OS
 .DS_Store
 Thumbs.db
 docss/
+
 
 # Database
 *.db

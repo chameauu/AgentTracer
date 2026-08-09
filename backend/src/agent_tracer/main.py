@@ -1,6 +1,5 @@
-"""Minimal AgentTracer Backend — Iteration 1.
+"""Minimal AgentTracer Backend
 
-Single file, direct SQLite, no ORM, no clean architecture layers.
 """
 from __future__ import annotations
 
