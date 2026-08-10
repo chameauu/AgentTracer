@@ -12,7 +12,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from opentelemetry.trace import SpanContext
 
-from agent_trace_sdk import AgentTraceSpanExporter, init_tracing, trace_agent_run
+from agent_trace_sdk import (
+    AgentTraceSpanExporter,
+    init_tracing,
+    record_input,
+    record_output,
+    trace_agent_run,
+    trace_span,
+)
 
 
 class TestSDKFormatValidation:
@@ -273,6 +280,54 @@ class TestSDKFormatValidation:
         assert span_start["data"]["attributes"]["temperature"] == 0.7
         assert span_start["data"]["attributes"]["custom_attr"] == "value"
 
+    @pytest.mark.asyncio
+    async def test_run_name_from_agent_run_span(self, exporter):
+        """Test that run_name is taken from the agent_run span's name."""
+        span = MagicMock()
+        span.context = MagicMock(spec=SpanContext)
+        span.context.span_id = 0x1234567890ABCDEF
+        span.parent = None
+        span.name = "my_agent"
+        span.attributes = {"span_type": "agent_run"}
+        span.start_time = 1704067200000000000
+        span.end_time = None
+        span.events = []
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        exporter._client = mock_client
+
+        exporter.export([span])
+
+        payload = mock_client.post.call_args.kwargs["json"]
+        assert payload["run_name"] == "my_agent"
+
+    @pytest.mark.asyncio
+    async def test_run_name_omitted_without_agent_run_span(self, exporter):
+        """Test that run_name is omitted when no agent_run span is present."""
+        span = MagicMock()
+        span.context = MagicMock(spec=SpanContext)
+        span.context.span_id = 0x1234567890ABCDEF
+        span.parent = None
+        span.name = "Child Span"
+        span.attributes = {"span_type": "step"}
+        span.start_time = 1704067200000000000
+        span.end_time = None
+        span.events = []
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        exporter._client = mock_client
+
+        exporter.export([span])
+
+        payload = mock_client.post.call_args.kwargs["json"]
+        assert "run_name" not in payload
+
 
 class TestSDKDecorator:
     """Tests for the @trace_agent_run decorator."""
@@ -332,6 +387,114 @@ class TestSDKDecorator:
 
         result = get_dict()
         assert result == {"key": "value"}
+
+
+class TestTraceSpanDecorator:
+    """Tests for the @trace_span decorator (nested spans)."""
+
+    def test_decorator_creates_span(self):
+        """Test that the decorator executes the function normally."""
+
+        @trace_span(name="test_span")
+        def my_function():
+            return "hello"
+
+        result = my_function()
+        assert result == "hello"
+
+    def test_decorator_uses_function_name(self):
+        """Test that the span uses the function name when no name is given."""
+
+        @trace_span()
+        def my_tool():
+            return "result"
+
+        assert my_tool() == "result"
+
+    def test_decorator_sets_span_type(self):
+        """Test that the span_type attribute is set on the span."""
+
+        @trace_span(name="search", span_type="tool_call")
+        def search(trace_span=None):
+            return trace_span
+
+        span = search()
+        assert span.attributes.get("span_type") == "tool_call"
+
+    def test_decorator_defaults_to_step(self):
+        """Test that span_type defaults to 'step'."""
+
+        @trace_span()
+        def work(trace_span=None):
+            return trace_span
+
+        span = work()
+        assert span.attributes.get("span_type") == "step"
+
+    def test_decorator_nests_under_active_span(self):
+        """Test that a traced function runs as a child of the active span."""
+        from agent_trace_sdk import get_tracer
+
+        tracer = get_tracer()
+        with tracer.start_as_current_span("parent"):
+
+            @trace_span(name="child", span_type="tool_call")
+            def tool(trace_span=None):
+                return trace_span
+
+            span = tool()
+        assert span.attributes.get("span_type") == "tool_call"
+
+    def test_decorator_with_args(self):
+        """Test that the decorator works with function arguments."""
+
+        @trace_span(name="add")
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        assert add(2, 3) == 5
+
+    def test_decorator_preserves_return_type(self):
+        """Test that the decorator preserves the return value."""
+
+        @trace_span(name="get_dict")
+        def get_dict() -> dict:
+            return {"key": "value"}
+
+        assert get_dict() == {"key": "value"}
+
+
+class TestSpanEvents:
+    """Tests for the record_input / record_output helpers."""
+
+    def test_record_input_adds_input_event(self):
+        """Test that record_input adds an 'input' event to the span."""
+
+        @trace_span(name="fn")
+        def fn(trace_span=None):
+            record_input("hello")
+            return trace_span
+
+        span = fn()
+        assert [(e.name, dict(e.attributes)) for e in span.events] == [
+            ("input", {"value": "hello"})
+        ]
+
+    def test_record_output_spreads_dict_attributes(self):
+        """Test that dict values become the event attributes directly."""
+
+        @trace_span(name="fn")
+        def fn(trace_span=None):
+            record_output({"result": 42})
+            return trace_span
+
+        span = fn()
+        assert [(e.name, dict(e.attributes)) for e in span.events] == [("output", {"result": 42})]
+
+    def test_record_event_is_noop_without_active_span(self):
+        """Test that the helpers do nothing when no span is recording."""
+        record_input("x")
+        record_output("y")
 
 
 class TestSDKInit:

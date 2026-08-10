@@ -144,6 +144,40 @@ with Tracer(name="my_agent") as span:
     span.add_event("output", {"result": result})
 ```
 
+### Nested Spans
+
+Trace sub-steps, tool calls, and LLM calls inside an agent run — they become children of the active span automatically. Record inputs/outputs with the event helpers:
+
+```python
+from agent_trace_sdk import record_input, record_output, trace_agent_run, trace_span
+
+@trace_agent_run(name="research_agent")
+def research(query: str) -> str:
+    record_input(query)
+
+    @trace_span(name="search_web", span_type="tool_call")
+    def search(q: str) -> str:
+        return f"results for {q}"
+
+    @trace_span(name="summarize", span_type="llm_call")
+    def summarize(text: str) -> str:
+        return f"summary of {text}"
+
+    result = summarize(search(query))
+    record_output(result)
+    return result
+```
+
+### Console Exporter (offline debugging)
+
+Don't want to start the backend? Swap in `ConsoleSpanExporter` — spans are printed to stdout instead of sent over HTTP:
+
+```python
+from agent_trace_sdk import ConsoleSpanExporter, init_tracing
+
+init_tracing(exporter=ConsoleSpanExporter(mode="json"))  # or mode="pretty" (default)
+```
+
 ### What Gets Collected
 
 - **Spans** — each unit of work with start/end timestamps

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import wraps
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SpanExporter
 
 from .exporter import AgentTraceSpanExporter
+from .processor import RetryBatchSpanProcessor
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -24,6 +25,7 @@ _DEFAULT_ENDPOINT = "http://localhost:8000/api/v1/ingest/events"
 def init_tracing(
     service_name: str = "agent-tracer",
     endpoint: str | None = None,
+    exporter: SpanExporter | None = None,
 ) -> None:
     """Initialize OpenTelemetry tracing with the AgentTrace exporter.
 
@@ -33,6 +35,8 @@ def init_tracing(
         service_name: Name of your service/agent (used as resource attribute).
         endpoint: URL of the AgentTrace backend ingest endpoint.
             Defaults to http://localhost:8000/api/v1/ingest/events.
+        exporter: Optional SpanExporter to use instead of the default HTTP
+            exporter (e.g. ConsoleSpanExporter(mode="json") for debugging).
     """
     global _tracer
 
@@ -40,8 +44,9 @@ def init_tracing(
         endpoint = _DEFAULT_ENDPOINT
 
     provider = TracerProvider()
-    exporter = AgentTraceSpanExporter(endpoint=endpoint)
-    processor = BatchSpanProcessor(exporter)
+    if exporter is None:
+        exporter = AgentTraceSpanExporter(endpoint=endpoint)
+    processor = RetryBatchSpanProcessor(exporter)
     provider.add_span_processor(processor)
 
     # Set the global tracer provider
@@ -121,3 +126,56 @@ def trace_agent_run(
         return wrapper  # type: ignore
 
     return decorator
+
+
+def trace_span(
+    name: str | None = None,
+    span_type: str = "step",
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator that traces a function as a nested span.
+
+    Use inside a traced agent run to capture sub-steps, tool calls, and
+    LLM calls as child spans:
+
+        @trace_span(name="search_web", span_type="tool_call")
+        def search(query: str) -> str:
+            ...
+    """
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        span_name = name or func.__name__
+
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            tracer = get_tracer()
+            with tracer.start_as_current_span(span_name) as span:
+                span.set_attribute("span_type", span_type)
+                if "trace_span" in func.__code__.co_varnames:
+                    kwargs["trace_span"] = span
+                return func(*args, **kwargs)
+
+        return wrapper  # type: ignore
+
+    return decorator
+
+
+def record_input(value: Any) -> None:
+    """Record an 'input' event on the current span.
+
+    Mappings are stored as event attributes directly; any other value is
+    wrapped as {"value": ...}. No-op when no span is recording.
+    """
+    _record_event("input", value)
+
+
+def record_output(value: Any) -> None:
+    """Record an 'output' event on the current span. See record_input."""
+    _record_event("output", value)
+
+
+def _record_event(event_type: str, value: Any) -> None:
+    span = trace.get_current_span()
+    if not span.is_recording():
+        return
+    attributes = dict(value) if isinstance(value, Mapping) else {"value": value}
+    span.add_event(event_type, attributes)

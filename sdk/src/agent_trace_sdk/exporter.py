@@ -65,6 +65,7 @@ class AgentTraceSpanExporter(SpanExporter):
         client = await self._get_client()
         events: list[dict[str, Any]] = []
         run_id: str | None = None
+        run_name: str | None = None
 
         for span in spans:
             # Handle both int and string span_id
@@ -83,6 +84,10 @@ class AgentTraceSpanExporter(SpanExporter):
             attrs = dict(span.attributes) if span.attributes else {}
             span_name = span.name
             span_type = attrs.pop("span_type", "step")
+
+            # The agent_run span names the run (backend falls back to run-{id[:8]})
+            if span_type == "agent_run" and run_name is None:
+                run_name = span_name
 
             # span_start event
             start_time_ns = span.start_time
@@ -147,6 +152,8 @@ class AgentTraceSpanExporter(SpanExporter):
             "run_id": run_id or "unknown",
             "events": events,
         }
+        if run_name is not None:
+            payload["run_name"] = run_name
 
         response = await client.post(self._endpoint, json=payload)
         response.raise_for_status()
