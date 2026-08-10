@@ -4,10 +4,10 @@ Uses an in-memory SQLite database with StaticPool so every session
 shares the same connection (and therefore the same in-memory DB).
 """
 
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
-from datetime import datetime, timezone
-
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -23,7 +23,7 @@ from agent_tracer.infrastructure.repositories import (
 
 
 def _utc(y: int, mo: int, d: int, h: int = 0, mi: int = 0, s: int = 0) -> datetime:
-    return datetime(y, mo, d, h, mi, s, tzinfo=timezone.utc)
+    return datetime(y, mo, d, h, mi, s, tzinfo=UTC)
 
 
 @pytest_asyncio.fixture(scope="function")

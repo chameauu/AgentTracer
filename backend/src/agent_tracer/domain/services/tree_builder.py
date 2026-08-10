@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 from collections import defaultdict
+
 from ..entities import TraceNode
-from ..value_objects import SpanType
 
 
 class TreeBuilder:

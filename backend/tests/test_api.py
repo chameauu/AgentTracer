@@ -3,10 +3,9 @@
 Inspired by old/backend/tests/integration/test_api.py but adapted for
 the single-file backend implementation.
 """
-import pytest
-from httpx import AsyncClient, ASGITransport
 
-from agent_tracer.main import app
+import pytest
+from httpx import AsyncClient
 
 
 class TestHealthEndpoint:

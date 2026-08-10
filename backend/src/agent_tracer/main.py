@@ -6,14 +6,12 @@ import json
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
 
 # ── Database ──────────────────────────────────────────────────────────────
 
@@ -27,6 +25,7 @@ def get_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+
     return conn
 
 
@@ -122,7 +121,7 @@ class TraceTreeResponse(BaseModel):
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _parse_timestamp(ts: str | None) -> str:
@@ -162,9 +161,7 @@ async def ingest_events(request: IngestRequest) -> IngestResponse:
 
     try:
         # Ensure run exists
-        run = conn.execute(
-            "SELECT id FROM runs WHERE id = ?", (request.run_id,)
-        ).fetchone()
+        run = conn.execute("SELECT id FROM runs WHERE id = ?", (request.run_id,)).fetchone()
         if not run:
             now = _utcnow()
             conn.execute(

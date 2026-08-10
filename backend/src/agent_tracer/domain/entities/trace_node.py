@@ -1,11 +1,16 @@
 from __future__ import annotations
+
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from ..value_objects import SpanType
 
+
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
 @dataclass
 class TraceNode:
     id: str
@@ -17,6 +22,7 @@ class TraceNode:
     ended_at: datetime | None = None
     attributes: dict = field(default_factory=dict)
     children: list[TraceNode] = field(default_factory=list)
+
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("id cannot be empty")
@@ -24,11 +30,13 @@ class TraceNode:
             raise ValueError("run_id cannot be empty")
         if not self.name:
             raise ValueError("name cannot be empty")
+
     @property
     def duration_ms(self) -> float | None:
         if self.ended_at is None:
             return None
         return (self.ended_at - self.started_at).total_seconds() * 1000
+
     @classmethod
     def create(
         cls,
@@ -47,9 +55,12 @@ class TraceNode:
             parent_id=parent_id,
             **kwargs,
         )
+
     def add_child(self, node: TraceNode) -> None:
         self.children.append(node)
+
     def is_root(self) -> bool:
         return self.parent_id is None
+
     def complete(self, ended_at: datetime | None = None) -> None:
         self.ended_at = ended_at or _utcnow()

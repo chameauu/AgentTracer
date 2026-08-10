@@ -5,6 +5,7 @@ from .repositories import (
     SqlSpanEventRepository,
     SqlTraceNodeRepository,
 )
+
 __all__ = [
     "create_engine",
     "create_session_factory",

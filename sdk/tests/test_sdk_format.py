@@ -6,13 +6,11 @@ AgentTraceSpanExporter.
 
 Inspired by old/sdk/tests/test_e2e.py but adapted for OpenTelemetry.
 """
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
 
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import SpanContext, TraceFlags, TraceState
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from opentelemetry.trace import SpanContext
 
 from agent_trace_sdk import AgentTraceSpanExporter, init_tracing, trace_agent_run
 
@@ -23,9 +21,7 @@ class TestSDKFormatValidation:
     @pytest.fixture
     def exporter(self):
         """Create an exporter with a mock HTTP client."""
-        exporter = AgentTraceSpanExporter(
-            endpoint="http://localhost:8000/api/v1/ingest/events"
-        )
+        exporter = AgentTraceSpanExporter(endpoint="http://localhost:8000/api/v1/ingest/events")
         return exporter
 
     @pytest.mark.asyncio
@@ -34,7 +30,7 @@ class TestSDKFormatValidation:
         # Create a mock OTel span
         span = MagicMock()
         span.context = MagicMock(spec=SpanContext)
-        span.context.span_id = 0x1234567890abcdef
+        span.context.span_id = 0x1234567890ABCDEF
         span.parent = None
         span.name = "Test Span"
         span.attributes = {"span_type": "agent_run", "model": "gpt-4"}
@@ -45,10 +41,10 @@ class TestSDKFormatValidation:
         # Mock the client and its post method
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        
+
         # Patch the async method to return our mock client
         exporter._client = mock_client
 
@@ -79,7 +75,7 @@ class TestSDKFormatValidation:
         # Create a mock OTel span with end_time
         span = MagicMock()
         span.context = MagicMock(spec=SpanContext)
-        span.context.span_id = 0x1234567890abcdef
+        span.context.span_id = 0x1234567890ABCDEF
         span.parent = None
         span.name = "Test Span"
         span.attributes = {}
@@ -89,7 +85,7 @@ class TestSDKFormatValidation:
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         exporter._client = mock_client
@@ -116,7 +112,7 @@ class TestSDKFormatValidation:
         # Create a mock OTel span with events
         span = MagicMock()
         span.context = MagicMock(spec=SpanContext)
-        span.context.span_id = 0x1234567890abcdef
+        span.context.span_id = 0x1234567890ABCDEF
         span.parent = None
         span.name = "Test Span"
         span.attributes = {}
@@ -132,7 +128,7 @@ class TestSDKFormatValidation:
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         exporter._client = mock_client
@@ -179,7 +175,7 @@ class TestSDKFormatValidation:
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         exporter._client = mock_client
@@ -198,7 +194,7 @@ class TestSDKFormatValidation:
         # Create parent span
         parent_span = MagicMock()
         parent_span.context = MagicMock(spec=SpanContext)
-        parent_span.context.span_id = 0xaaaaaaaabbbbbbbb
+        parent_span.context.span_id = 0xAAAAAAAABBBBBBBB
         parent_span.parent = None
         parent_span.name = "Parent Span"
         parent_span.attributes = {"span_type": "agent_run"}
@@ -209,9 +205,9 @@ class TestSDKFormatValidation:
         # Create child span with parent
         child_span = MagicMock()
         child_span.context = MagicMock(spec=SpanContext)
-        child_span.context.span_id = 0xccccccccdddddddd
+        child_span.context.span_id = 0xCCCCCCCCDDDDDDDD
         child_span.parent = MagicMock()
-        child_span.parent.span_id = 0xaaaaaaaabbbbbbbb
+        child_span.parent.span_id = 0xAAAAAAAABBBBBBBB
         child_span.name = "Child Span"
         child_span.attributes = {"span_type": "step"}
         child_span.start_time = 1704067201000000000
@@ -220,7 +216,7 @@ class TestSDKFormatValidation:
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         exporter._client = mock_client
@@ -233,18 +229,17 @@ class TestSDKFormatValidation:
         events = payload["events"]
         # Find child span_start event
         child_start = next(
-            e for e in events
-            if e["type"] == "span_start" and e["data"]["name"] == "Child Span"
+            e for e in events if e["type"] == "span_start" and e["data"]["name"] == "Child Span"
         )
 
-        assert child_start["data"]["parent_id"] == format(0xaaaaaaaabbbbbbbb, "x")
+        assert child_start["data"]["parent_id"] == format(0xAAAAAAAABBBBBBBB, "x")
 
     @pytest.mark.asyncio
     async def test_attributes_preserved(self, exporter):
         """Test that span attributes are preserved in the output."""
         span = MagicMock()
         span.context = MagicMock(spec=SpanContext)
-        span.context.span_id = 0x1234567890abcdef
+        span.context.span_id = 0x1234567890ABCDEF
         span.parent = None
         span.name = "Test Span"
         span.attributes = {
@@ -259,7 +254,7 @@ class TestSDKFormatValidation:
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         exporter._client = mock_client
@@ -284,6 +279,7 @@ class TestSDKDecorator:
 
     def test_decorator_creates_span(self):
         """Test that decorator creates a span."""
+
         @trace_agent_run(name="test_decorator")
         def my_function():
             return "hello"
@@ -294,6 +290,7 @@ class TestSDKDecorator:
 
     def test_decorator_uses_function_name(self):
         """Test that decorator uses function name if no name provided."""
+
         @trace_agent_run()
         def my_agent():
             return "result"
@@ -318,6 +315,7 @@ class TestSDKDecorator:
 
     def test_decorator_with_args(self):
         """Test that decorator works with function arguments."""
+
         @trace_agent_run(name="test_args")
         def add(a: int, b: int) -> int:
             return a + b
@@ -327,6 +325,7 @@ class TestSDKDecorator:
 
     def test_decorator_preserves_return_type(self):
         """Test that decorator preserves function return type."""
+
         @trace_agent_run(name="test_return")
         def get_dict() -> dict:
             return {"key": "value"}
@@ -345,11 +344,13 @@ class TestSDKInit:
 
         # Get the tracer - should work without error
         from agent_trace_sdk.setup import get_tracer
+
         tracer = get_tracer()
         assert tracer is not None
 
     def test_get_tracer_returns_default(self):
         """Test that get_tracer returns a default if not initialized."""
         from agent_trace_sdk.setup import get_tracer
+
         tracer = get_tracer()
         assert tracer is not None

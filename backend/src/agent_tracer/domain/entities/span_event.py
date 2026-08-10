@@ -1,10 +1,16 @@
 """SpanEvent — a terminal point-in-time annotation on a node (frozen)."""
+
 from __future__ import annotations
+
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
 @dataclass(frozen=True)
 class SpanEvent:
     id: str
@@ -12,6 +18,7 @@ class SpanEvent:
     event_type: str
     timestamp: datetime
     payload: dict = field(default_factory=dict)
+
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("id cannot be empty")
@@ -19,6 +26,7 @@ class SpanEvent:
             raise ValueError("node_id cannot be empty")
         if not self.event_type:
             raise ValueError("event_type cannot be empty")
+
     @classmethod
     def create(
         cls,

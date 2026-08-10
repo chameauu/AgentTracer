@@ -1,4 +1,6 @@
 from enum import Enum
+
+
 class SpanType(str, Enum):
     AGENT_RUN = "agent_run"
     STEP = "step"

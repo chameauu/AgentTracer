@@ -4,8 +4,10 @@ Pure unit tests: no DB, no HTTP, no fixtures. They lock down the
 behavior of the Clean Architecture domain layer.
 """
 
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from agent_tracer.domain.entities import AgentRun, SpanEvent, TraceNode
 from agent_tracer.domain.interfaces import MockClock
@@ -35,16 +37,14 @@ class TestAgentRun:
         assert run.fail().status == RunStatus.FAILED
 
     def test_duration_ms_with_mock_clock(self) -> None:
-        clock = MockClock(datetime(2026, 1, 1, tzinfo=timezone.utc))
+        clock = MockClock(datetime(2026, 1, 1, tzinfo=UTC))
         run = AgentRun(
             id="r1",
             name="my-agent",
             status=RunStatus.RUNNING,
             started_at=clock.utcnow(),
         )
-        completed = run.complete(
-            ended_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=timezone.utc)
-        )
+        completed = run.complete(ended_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC))
         assert completed.duration_ms == 5000.0
 
     def test_empty_id_rejected(self) -> None:
@@ -53,7 +53,7 @@ class TestAgentRun:
                 id="",
                 name="x",
                 status=RunStatus.RUNNING,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
 
     def test_empty_name_rejected(self) -> None:
@@ -62,7 +62,7 @@ class TestAgentRun:
                 id="r1",
                 name="",
                 status=RunStatus.RUNNING,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
 
     def test_ended_at_before_started_at_rejected(self) -> None:
@@ -71,8 +71,8 @@ class TestAgentRun:
                 id="r1",
                 name="x",
                 status=RunStatus.COMPLETED,
-                started_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=timezone.utc),
-                ended_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                started_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+                ended_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
             )
 
 
@@ -80,9 +80,7 @@ class TestTraceNode:
     """TraceNode: create, link, complete."""
 
     def test_create_sets_parent(self) -> None:
-        node = TraceNode.create(
-            run_id="r1", name="step", span_type=SpanType.STEP, parent_id="root"
-        )
+        node = TraceNode.create(run_id="r1", name="step", span_type=SpanType.STEP, parent_id="root")
         assert node.parent_id == "root"
         assert node.is_root() is False
 
@@ -112,10 +110,10 @@ class TestSpanEvent:
             id="e1",
             node_id="n1",
             event_type="tool_call",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             payload={},
         )
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             event.event_type = "changed"  # type: ignore[misc]
 
 
@@ -176,6 +174,6 @@ class TestMockClock:
     """MockClock returns the fixed time."""
 
     def test_fixed_time(self) -> None:
-        fixed = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        fixed = datetime(2026, 1, 1, tzinfo=UTC)
         clock = MockClock(fixed)
         assert clock.utcnow() == fixed

@@ -1,7 +1,9 @@
 """OpenTelemetry SpanExporter that sends traces to AgentTracer backend."""
+
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import httpx
 from opentelemetry.sdk.trace import ReadableSpan
@@ -36,14 +38,14 @@ class AgentTraceSpanExporter(SpanExporter):
         try:
             # Check if we're already in an async context
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We're in an async context - we can't use asyncio.run()
                 # Instead, create a new thread to run the async code
                 import threading
-                
+
                 def run_in_thread():
                     asyncio.run(self._export_async(spans))
-                
+
                 thread = threading.Thread(target=run_in_thread)
                 thread.start()
                 thread.join(timeout=30)  # Wait max 30 seconds
@@ -67,7 +69,11 @@ class AgentTraceSpanExporter(SpanExporter):
         for span in spans:
             # Handle both int and string span_id
             if span.context and span.context.span_id:
-                span_id = format(span.context.span_id, "x") if isinstance(span.context.span_id, int) else str(span.context.span_id)
+                span_id = (
+                    format(span.context.span_id, "x")
+                    if isinstance(span.context.span_id, int)
+                    else str(span.context.span_id)
+                )
             else:
                 span_id = "unknown"
             if run_id is None:
@@ -84,45 +90,55 @@ class AgentTraceSpanExporter(SpanExporter):
 
             parent_id = None
             if span.parent and span.parent.span_id:
-                parent_id = format(span.parent.span_id, "x") if isinstance(span.parent.span_id, int) else str(span.parent.span_id)
+                parent_id = (
+                    format(span.parent.span_id, "x")
+                    if isinstance(span.parent.span_id, int)
+                    else str(span.parent.span_id)
+                )
 
-            events.append({
-                "type": "span_start",
-                "data": {
-                    "span_id": span_id,
-                    "parent_id": parent_id,
-                    "name": span_name,
-                    "span_type": span_type,
-                    "timestamp": start_time_iso,
-                    "attributes": attrs,
-                },
-            })
+            events.append(
+                {
+                    "type": "span_start",
+                    "data": {
+                        "span_id": span_id,
+                        "parent_id": parent_id,
+                        "name": span_name,
+                        "span_type": span_type,
+                        "timestamp": start_time_iso,
+                        "attributes": attrs,
+                    },
+                }
+            )
 
             # span_end event
             end_time_ns = span.end_time
             if end_time_ns:
                 end_time_iso = _ns_to_iso(end_time_ns)
-                events.append({
-                    "type": "span_end",
-                    "data": {
-                        "span_id": span_id,
-                        "timestamp": end_time_iso,
-                        "attributes": {},
-                    },
-                })
+                events.append(
+                    {
+                        "type": "span_end",
+                        "data": {
+                            "span_id": span_id,
+                            "timestamp": end_time_iso,
+                            "attributes": {},
+                        },
+                    }
+                )
 
             # Convert OTel events to span_event format
             for otel_event in span.events:
                 event_time_iso = _ns_to_iso(otel_event.timestamp) if otel_event.timestamp else ""
-                events.append({
-                    "type": "span_event",
-                    "data": {
-                        "span_id": span_id,
-                        "event_type": otel_event.name,
-                        "timestamp": event_time_iso,
-                        "payload": dict(otel_event.attributes) if otel_event.attributes else {},
-                    },
-                })
+                events.append(
+                    {
+                        "type": "span_event",
+                        "data": {
+                            "span_id": span_id,
+                            "event_type": otel_event.name,
+                            "timestamp": event_time_iso,
+                            "payload": dict(otel_event.attributes) if otel_event.attributes else {},
+                        },
+                    }
+                )
 
         if not events:
             return
@@ -138,6 +154,7 @@ class AgentTraceSpanExporter(SpanExporter):
     def shutdown(self) -> None:
         """Clean up the exporter."""
         import asyncio
+
         if self._client:
             try:
                 asyncio.run(self._client.aclose())
@@ -153,5 +170,6 @@ class AgentTraceSpanExporter(SpanExporter):
 def _ns_to_iso(ns: int) -> str:
     """Convert nanoseconds since epoch to ISO 8601 string."""
     from datetime import datetime, timezone
+
     sec = ns / 1_000_000_000
     return datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()

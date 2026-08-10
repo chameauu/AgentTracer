@@ -1,8 +1,10 @@
 """Setup and initialization for OpenTelemetry-based AgentTracer SDK."""
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, TypeVar, ParamSpec
+from typing import ParamSpec, TypeVar
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -88,6 +90,7 @@ def trace_agent_run(
         def my_agent(input: str) -> str:
             ...
     """
+
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         run_name = name or func.__name__
 
