@@ -108,6 +108,69 @@ class TestIngestService:
         assert root["duration_ms"] == 5000.0
 
     @pytest.mark.asyncio
+    async def test_ingest_span_end_completes_run(self, services: Services) -> None:
+        """span_end of the agent_run root also completes the run."""
+        events = [
+            {
+                "type": "span_start",
+                "data": {
+                    "span_id": "root-1",
+                    "name": "my_agent",
+                    "span_type": "agent_run",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                },
+            },
+            {
+                "type": "span_end",
+                "data": {"span_id": "root-1", "timestamp": "2024-01-01T00:00:05Z"},
+            },
+        ]
+        accepted = await services.ingest.ingest("run-1", "Run", events)
+        assert accepted == 2
+
+        run = await services.run.get_run("run-1")
+        assert run["status"] == "completed"
+        assert run["ended_at"] == "2024-01-01T00:00:05+00:00"
+        assert run["duration_ms"] == 5000.0
+
+    @pytest.mark.asyncio
+    async def test_ingest_span_end_does_not_complete_run_for_sub_step(
+        self, services: Services
+    ) -> None:
+        """span_end of a non-root node leaves the run running."""
+        events = [
+            {
+                "type": "span_start",
+                "data": {
+                    "span_id": "root-1",
+                    "name": "my_agent",
+                    "span_type": "agent_run",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                },
+            },
+            {
+                "type": "span_start",
+                "data": {
+                    "span_id": "child-1",
+                    "name": "search",
+                    "span_type": "tool_call",
+                    "parent_id": "root-1",
+                    "timestamp": "2024-01-01T00:00:01Z",
+                },
+            },
+            {
+                "type": "span_end",
+                "data": {"span_id": "child-1", "timestamp": "2024-01-01T00:00:02Z"},
+            },
+        ]
+        accepted = await services.ingest.ingest("run-1", "Run", events)
+        assert accepted == 3
+
+        run = await services.run.get_run("run-1")
+        assert run["status"] == "running"
+        assert run["ended_at"] is None
+
+    @pytest.mark.asyncio
     async def test_ingest_span_end_unknown_span_is_ignored(self, services: Services) -> None:
         """span_end for a missing span does not crash and is still counted."""
         events = [

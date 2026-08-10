@@ -128,19 +128,6 @@
   border: 1px solid #e2e8f0;
 }
 
-.attributes-json pre,
-.events-list pre {
-  margin: 0;
-  background: #0f172a;
-  color: #e2e8f0;
-  padding: 0.75rem;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-}
-
 .event-item {
   margin-bottom: 0.75rem;
   padding: 0.75rem;

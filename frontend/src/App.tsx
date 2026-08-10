@@ -9,7 +9,8 @@ function App() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const { data: runTree, loading: treeLoading, error: treeError } = useRunTree(selectedRunId);
+  const { data: runTree, loading: treeLoading, error: treeError, refetch: refetchTree } =
+    useRunTree(selectedRunId);
 
   const handleRunSelect = (runId: string) => {
     setSelectedRunId(runId);
@@ -45,6 +46,7 @@ function App() {
             ) : treeError ? (
               <div className="trace-tree-error">
                 <p>Error: {treeError.message}</p>
+                <button onClick={refetchTree}>Retry</button>
               </div>
             ) : (!runTree || !runTree.root) ? (
               <div className="trace-tree-empty">

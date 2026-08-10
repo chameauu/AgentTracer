@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import datetime
 
 from ...domain.entities import AgentRun, SpanEvent, TraceNode
@@ -66,17 +67,25 @@ class IngestService:
 
     async def _process_event(self, run_id: str, event_type: str, data: dict) -> None:
         if event_type == "span_start":
-            await self._nodes.save(
-                TraceNode(
-                    id=data.get("span_id") or str(uuid.uuid4()),
-                    run_id=run_id,
-                    parent_id=data.get("parent_id"),
-                    name=data.get("name") or "unknown",
-                    span_type=SpanType(data.get("span_type") or "step"),
-                    started_at=self._parse_ts(data.get("timestamp")),
-                    attributes=data.get("attributes") or {},
-                )
+            node = TraceNode(
+                id=data.get("span_id") or str(uuid.uuid4()),
+                run_id=run_id,
+                parent_id=data.get("parent_id"),
+                name=data.get("name") or "unknown",
+                span_type=SpanType(data.get("span_type") or "step"),
+                started_at=self._parse_ts(data.get("timestamp")),
+                attributes=data.get("attributes") or {},
             )
+            await self._nodes.save(node)
+            # The run may be created at ingest time (after the run already
+            # finished); backdate its start to the agent_run span so that
+            # completion timestamps are never before the run's start.
+            if node.span_type == SpanType.AGENT_RUN and node.parent_id is None:
+                run = await self._runs.get(run_id)
+                if run is not None and run.started_at != node.started_at:
+                    await self._runs.save(
+                        replace(run, started_at=node.started_at, updated_at=self._clock.utcnow())
+                    )
         elif event_type == "span_end":
             span_id = data.get("span_id")
             if span_id:
@@ -85,6 +94,10 @@ class IngestService:
                     node.complete(self._parse_ts(data.get("timestamp")))
                     node.attributes = data.get("attributes") or {}
                     await self._nodes.save(node)
+                    if node.span_type == SpanType.AGENT_RUN and node.parent_id is None:
+                        run = await self._runs.get(node.run_id)
+                        if run is not None:
+                            await self._runs.save(run.complete(node.ended_at))
         elif event_type == "span_event":
             await self._events.save(
                 SpanEvent(

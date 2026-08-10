@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRuns } from '../../hooks/useRuns';
 import { Run } from '../../types';
+import { RunListItem } from './RunListItem';
 import './RunList.css';
 
 interface RunListProps {
@@ -13,10 +14,6 @@ export const RunList: React.FC<RunListProps> = ({ onSelectRun, selectedRunId }) 
 
   const handleRetry = () => {
     refetch();
-  };
-
-  const handleRowClick = (runId: string) => {
-    onSelectRun(runId);
   };
 
   if (loading && !data) {
@@ -44,7 +41,7 @@ export const RunList: React.FC<RunListProps> = ({ onSelectRun, selectedRunId }) 
   return (
     <div className="run-list-container">
       <div className="run-list-header">
-        <h2>Runs</h2>
+        <h2>Runs ({data.total})</h2>
         <button onClick={handleRetry} className="refresh-button">
           ⟲ Refresh
         </button>
@@ -61,27 +58,12 @@ export const RunList: React.FC<RunListProps> = ({ onSelectRun, selectedRunId }) 
           </thead>
           <tbody>
             {data.runs.map((run: Run) => (
-              <tr
+              <RunListItem
                 key={run.id}
-                className={run.id === selectedRunId ? 'selected' : ''}
-                onClick={() => handleRowClick(run.id)}
-              >
-                <td>{run.name}</td>
-                <td>
-                  <span 
-                    className={`status-badge status-${run.status.toLowerCase()}`}
-                  >
-                    {run.status}
-                  </span>
-                </td>
-                <td>{new Date(run.started_at).toLocaleString()}</td>
-                <td>
-                  {run.duration_ms !== null ? 
-                    `${run.duration_ms.toFixed(1)} ms` : 
-                    'Running'
-                  }
-                </td>
-              </tr>
+                run={run}
+                selected={run.id === selectedRunId}
+                onSelect={onSelectRun}
+              />
             ))}
           </tbody>
         </table>

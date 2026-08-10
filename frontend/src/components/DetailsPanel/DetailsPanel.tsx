@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TraceNode } from '../../types';
+import { JsonView } from './JsonView';
 import './DetailsPanel.css';
 
 interface DetailsPanelProps {
@@ -35,11 +36,14 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   }, [tree, nodeId]);
 
   if (!selectedNode) {
+    const placeholder = nodeId
+      ? 'Node not found in the trace tree'
+      : 'Select a node from the trace tree to view details';
     return (
       <div className="details-panel">
         <div className="details-header">
           <h2>Node Details</h2>
-          <p className="placeholder">Select a node from the trace tree to view details</p>
+          <p className="placeholder">{placeholder}</p>
         </div>
       </div>
     );
@@ -106,7 +110,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
           <div className="details-section">
             <h3>Attributes</h3>
             <div className="attributes-json">
-              <pre>{JSON.stringify(selectedNode.attributes, null, 2)}</pre>
+              <JsonView data={selectedNode.attributes} />
             </div>
           </div>
         )}
@@ -122,7 +126,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                     <span className="event-time">{formatDate(event.timestamp)}</span>
                   </div>
                   <div className="event-payload">
-                    <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+                    <JsonView data={event.payload} maxHeight={200} />
                   </div>
                 </div>
               ))}
