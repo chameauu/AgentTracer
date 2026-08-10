@@ -13,11 +13,12 @@ from sqlalchemy.ext.asyncio import (
 
 from .models import Base
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_tracer.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "data" / "agent_tracer.db"
 
 
 def create_engine(db_path: Path = DEFAULT_DB_PATH) -> AsyncEngine:
     """Create the async SQLite engine for the given path."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     return create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
 
 

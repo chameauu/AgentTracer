@@ -1,56 +1,64 @@
 """Shared test fixtures for AgentTracer backend tests.
-
-Inspired by old/backend/tests/conftest.py but adapted for the single-file
-SQLite implementation.
+Each test gets a fresh in-memory SQLite engine (single shared connection),
+so no test database files are created and no DB_PATH monkeypatching is needed.
 """
 
-from pathlib import Path
+from __future__ import annotations
 
-import pytest
+from typing import NamedTuple
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import StaticPool
 
-from agent_tracer.main import app
+from agent_tracer.application import IngestService, RunService
+from agent_tracer.infrastructure import (
+    SqlRunRepository,
+    SqlSpanEventRepository,
+    SqlTraceNodeRepository,
+    create_session_factory,
+    init_db,
+)
+from agent_tracer.main import create_app
 
-# Use a test database to avoid interfering with development data
-TEST_DB_DIR = Path(__file__).parent.parent / "data" / "test"
+
+class Services(NamedTuple):
+    """Application services wired to the shared in-memory engine."""
+
+    ingest: IngestService
+    run: RunService
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client() -> AsyncClient:
-    """Create test HTTP client with the FastAPI app.
+async def engine() -> AsyncEngine:
+    """Fresh in-memory SQLite engine per test (one shared connection)."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    await init_db(engine)
+    yield engine
+    await engine.dispose()
 
-    Each test gets a fresh client. The app uses in-memory SQLite
-    so data doesn't persist between tests.
-    """
-    # Override the DB path to use test directory
-    import agent_tracer.main as main_module
 
-    # Store original DB_PATH and set test path
-    original_db_path = main_module.DB_PATH
-    TEST_DB_DIR.mkdir(parents=True, exist_ok=True)
-    main_module.DB_PATH = TEST_DB_DIR / "test_agent_tracer.db"
+@pytest_asyncio.fixture(scope="function")
+async def services(engine: AsyncEngine) -> Services:
+    """Build repositories + application services on the in-memory engine."""
+    session_factory = create_session_factory(engine)
+    run_repo = SqlRunRepository(session_factory)
+    node_repo = SqlTraceNodeRepository(session_factory)
+    event_repo = SqlSpanEventRepository(session_factory)
+    return Services(
+        ingest=IngestService(run_repo, node_repo, event_repo),
+        run=RunService(run_repo, node_repo, event_repo),
+    )
 
-    # Re-initialize DB for each test
-    main_module.init_db()
 
+@pytest_asyncio.fixture(scope="function")
+async def client(engine: AsyncEngine) -> AsyncClient:
+    """HTTP client against the FastAPI app on the in-memory engine."""
+    app = create_app(engine=engine)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-
-    # Restore original DB path
-    main_module.DB_PATH = original_db_path
-
-    # Cleanup test database
-    if TEST_DB_DIR.exists():
-        for f in TEST_DB_DIR.glob("test_*.db*"):
-            try:
-                f.unlink()
-            except Exception:
-                pass
-
-
-@pytest.fixture
-def anyio_backend():
-    """Configure anyio to use asyncio for async tests."""
-    return "asyncio"
