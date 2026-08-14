@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
@@ -173,9 +174,34 @@ def record_output(value: Any) -> None:
     _record_event("output", value)
 
 
+_PRIMITIVES = (str, int, float, bool, bytes, type(None))
+
+
+def _is_primitive(value: Any) -> bool:
+    return isinstance(value, _PRIMITIVES)
+
+
+def _sanitize_attribute(value: Any) -> Any:
+    """Make an event attribute value acceptable to OTel.
+
+    OTel event attributes only accept primitives (str/int/float/bool/bytes/None)
+    or sequences of primitives. Anything else — dicts, lists of dicts, tuples —
+    is JSON-encoded to a string so nested payloads are preserved instead of
+    being silently dropped by the SDK.
+    """
+    if _is_primitive(value):
+        return value
+    if isinstance(value, (list, tuple)):
+        if all(_is_primitive(v) for v in value):
+            return list(value)
+        return json.dumps(value, default=str)
+    return json.dumps(value, default=str)
+
+
 def _record_event(event_type: str, value: Any) -> None:
     span = trace.get_current_span()
     if not span.is_recording():
         return
     attributes = dict(value) if isinstance(value, Mapping) else {"value": value}
-    span.add_event(event_type, attributes)
+    sanitized = {str(k): _sanitize_attribute(v) for k, v in attributes.items()}
+    span.add_event(event_type, sanitized)

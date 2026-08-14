@@ -7,6 +7,7 @@ AgentTraceSpanExporter.
 Inspired by old/sdk/tests/test_e2e.py but adapted for OpenTelemetry.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -495,6 +496,31 @@ class TestSpanEvents:
         """Test that the helpers do nothing when no span is recording."""
         record_input("x")
         record_output("y")
+
+    def test_record_output_nested_dict_payload_is_json_encoded(self):
+        """Nested non-primitive values are JSON-encoded, not dropped."""
+
+        @trace_span(name="fn")
+        def fn(trace_span=None):
+            record_output({"steps": [{"tool": "search", "result": {"hits": 3}}]})
+            return trace_span
+
+        span = fn()
+        events = [(e.name, dict(e.attributes)) for e in span.events]
+        assert events[0][0] == "output"
+        assert json.loads(events[0][1]["steps"]) == [{"tool": "search", "result": {"hits": 3}}]
+
+    def test_record_input_list_of_primitives_kept_as_list(self):
+        """Sequences of primitives stay as sequences."""
+
+        @trace_span(name="fn")
+        def fn(trace_span=None):
+            record_input({"plan": ["search_web", "get_time"]})
+            return trace_span
+
+        span = fn()
+        attrs = [dict(e.attributes) for e in span.events]
+        assert list(attrs[0]["plan"]) == ["search_web", "get_time"]
 
 
 class TestSDKInit:
