@@ -16,7 +16,7 @@ Existing observability tools (Langfuse, LangSmith, etc.) are built for productio
 - **Developer-focused** — built for understanding your agent during development, not monitoring in prod
 - **Step-by-step** — interactive tree view of every span, tool call, prompt, and response
 - **Minimal setup** — start the backend, run your traced agent, open the UI
-- **Python SDK** — simple `@trace_agent_run` decorator or `with Tracer()` context manager
+- **Python SDK** — OpenTelemetry-based decorators for agent runs and nested spans
 
 If you've ever wished for a "debugger for agents" while developing an LLM app, AgentTracer is for you.
 
@@ -24,35 +24,7 @@ If you've ever wished for a "debugger for agents" while developing an LLM app, A
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────┐
-│              Your Agent Code                 │
-│         (Python / LangChain / etc.)          │
-└─────────────────────┬───────────────────────┘
-                      │
-                      │ @trace_agent_run
-                      ▼
-┌─────────────────────────────────────────────┐
-│            AgentTracer SDK                    │
-│  @trace_agent_run │ Tracer │ HTTPExporter    │
-└─────────────────────┬───────────────────────┘
-                      │
-                      │ HTTP POST /api/v1/ingest/events
-                      ▼
-┌─────────────────────────────────────────────┐
-│          AgentTracer Backend                  │
-│         FastAPI + SQLite                      │
-│  POST /ingest/events │ GET /runs │ GET /tree  │
-└─────────────────────┬───────────────────────┘
-                      │
-                      │ REST API
-                      ▼
-┌─────────────────────────────────────────────┐
-│          AgentTracer Frontend                 │
-│      React + TypeScript + Vite                │
-│  RunList │ TraceTree │ DetailsPanel           │
-└─────────────────────────────────────────────┘
-```
+![AgentTracer architecture](docs/images/agenttracer.png)
 
 ---
 
@@ -130,20 +102,6 @@ def research(query: str) -> str:
 research("What is Python?")
 ```
 
-### Context Manager (more control)
-
-```python
-from agent_trace_sdk import Tracer
-
-with Tracer(name="my_agent") as span:
-    span.set_attribute("model", "gpt-4")
-    span.set_attribute("temperature", 0.7)
-
-    result = agent.run(user_input)
-
-    span.add_event("output", {"result": result})
-```
-
 ### Nested Spans
 
 Trace sub-steps, tool calls, and LLM calls inside an agent run — they become children of the active span automatically. Record inputs/outputs with the event helpers:
@@ -185,6 +143,8 @@ init_tracing(exporter=ConsoleSpanExporter(mode="json"))  # or mode="pretty" (def
 - **Attributes** — key-value pairs you set on spans
 - **Events** — custom events like `input`, `output`, `error`
 - **Parent-child relationships** — nested spans form a tree
+- **Reliable delivery** — failed exports are retained and retried
+- **Offline debugging** — the console exporter can print spans without the backend
 
 ---
 
@@ -207,15 +167,17 @@ AgentTracer/
 ├── backend/             # FastAPI + SQLite (Python)
 │   ├── pyproject.toml
 │   └── src/agent_tracer/
-│       └── main.py      # Single-file backend
+│       ├── main.py      # FastAPI app factory and routes
+│       ├── domain/       # Entities, interfaces, and tree builder
+│       ├── application/  # Ingest and run services
+│       └── infrastructure/ # Async SQLAlchemy and repositories
 ├── sdk/                 # Python tracing library
 │   ├── pyproject.toml
 │   └── src/agent_trace_sdk/
-│       ├── tracer.py    # Main tracer
-│       ├── span.py      # Span dataclass
-│       ├── exporter.py  # HTTP + Console exporters
-│       ├── decorators.py # @trace_agent_run
-│       └── domain/      # Data contracts
+│       ├── setup.py           # OpenTelemetry setup and decorators
+│       ├── exporter.py        # HTTP span exporter
+│       ├── console_exporter.py # Offline console exporter
+│       └── processor.py       # Retry batch processor
 └── frontend/            # React + TypeScript UI
     ├── package.json
     ├── vite.config.ts
@@ -228,11 +190,11 @@ AgentTracer/
 
 ## Roadmap / Future Work
 
-- **Batch span processor** — efficient event delivery with retry logic
-- **Nested spans** — `@trace_span` decorator for sub-steps
-- **ContextVar-based span tracking** — automatic parent-child relationships
-- **Framework integrations** — LangChain, LlamaIndex, OpenAI SDK wrappers
-- **Enhanced visualization** — timeline view, filtering, search
+- **Protocol Buffers transport** — structured trace messages between the SDK and backend
+- **Configuration management** — environment-based database and application settings
+- **Typed exception handling** — consistent validation and server error responses
+- **Framework integrations** — LangChain, LlamaIndex, and OpenAI SDK wrappers
+- **Enhanced visualization** — timeline view, filtering, and search
 - **Run comparison** — side-by-side diff of two runs
 - **Docker setup** — one-command startup with docker-compose
 - **PostgreSQL backend** — for larger deployments
@@ -242,6 +204,11 @@ AgentTracer/
 ## License
 
 This project is licensed under the MIT License.
+
+## Documentation
+
+- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
+- [Protocol Buffers Documentation](https://protobuf.dev/)
 
 ---
 
