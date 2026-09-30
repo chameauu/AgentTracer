@@ -17,6 +17,7 @@ data/
 .vscode/
 .idea/
 .kilo/
+.omo/
 
 # OS
 .DS_Store
